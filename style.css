@@ -196,6 +196,14 @@ textarea, input[type="text"], input[type="date"], input[type="time"] {
 }
 .word-input-row input { flex: 1; }
 .word-input-row button { width: auto; padding: 10px 16px; }
+.mic-btn-small {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  font-size: 18px;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
 .word-chip-list {
   display: flex;
   flex-wrap: wrap;

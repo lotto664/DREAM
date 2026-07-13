@@ -63,6 +63,8 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText) {
       text += event.results[i][0].transcript;
     }
     targetEl.value = applyCustomWordCorrection(text, loadCustomWords());
+    // 검색창처럼 입력에 반응하는 화면이 바로 갱신되도록 input 이벤트를 쏴준다
+    targetEl.dispatchEvent(new Event('input'));
     resetSilenceTimer();
   };
 
@@ -129,8 +131,11 @@ analyzeBtn.addEventListener('click', () => {
     pDetailCount.textContent = '0/1000';
     previewCard.classList.remove('hidden');
   } else {
+    // 날짜/시간이 없으면 자료검색으로 자동 전환해서 검색 실행
     previewCard.classList.add('hidden');
-    alert('날짜/시간을 알아듣지 못했어요. "내일 오후 2시에 ~" 처럼 말해주세요.');
+    docSearchInput.value = text;
+    document.querySelector('.tab-btn[data-tab="docs"]').click();
+    renderDocList();
   }
 });
 
@@ -527,6 +532,14 @@ document.getElementById('docFileUploadBtn').addEventListener('click', async () =
 // ---------- 자료검색: 목차 + 검색 ----------
 const docSearchInput = document.getElementById('docSearchInput');
 const docSearchStatus = document.getElementById('docSearchStatus');
+
+// 자료검색 탭 전용 마이크 (말하면 바로 검색됨)
+createMicController(
+  document.getElementById('docMicBtn'),
+  document.getElementById('docMicStatus'),
+  docSearchInput,
+  ''
+);
 
 function docItemHtml(item, options = {}) {
   const { open = false, partial = false, hitHazards = [], hitMeasures = [], hitLines = [] } = options;
