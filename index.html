@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>현장 메모 · 음성 알람</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>현장 메모</h1>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="voice">음성입력</button>
+        <button class="tab-btn" data-tab="calendar">캘린더</button>
+        <button class="tab-btn" data-tab="docs">자료검색</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- 음성입력 화면 -->
+      <section id="tab-voice" class="tab-panel active">
+        <div class="mic-wrap">
+          <button id="micBtn" class="mic-btn">🎙️</button>
+          <p id="micStatus" class="mic-status">버튼을 눌러 말해보세요</p>
+        </div>
+
+        <div class="field">
+          <label>인식된 문장 (수정 가능)</label>
+          <textarea id="transcript" rows="2" placeholder="예: 내일 오전 10시에 위험성평가 회의 알람"></textarea>
+        </div>
+
+        <button id="analyzeBtn" class="primary-btn">입력</button>
+
+        <details class="word-panel">
+          <summary>인식 보정 단어 (건설 용어 등록)</summary>
+          <p class="hint-text">여기 등록한 단어와 발음이 비슷하게 인식되면 자동으로 이 단어로 고쳐줍니다. (예: SQ파이프, 위험성평가 등)</p>
+          <div class="word-input-row">
+            <input type="text" id="customWordInput" placeholder="예: SQ파이프" />
+            <button id="customWordAddBtn" class="ghost-btn">추가</button>
+          </div>
+          <div id="customWordList" class="word-chip-list"></div>
+        </details>
+
+        <div id="previewCard" class="preview-card hidden">
+          <h3>등록 내용 확인</h3>
+          <div class="field">
+            <label>날짜</label>
+            <input type="date" id="pDate" />
+          </div>
+          <div class="field">
+            <label>시간</label>
+            <input type="time" id="pTime" />
+          </div>
+          <div class="field">
+            <label>내용</label>
+            <input type="text" id="pTitle" />
+          </div>
+          <div class="field">
+            <label>상세 메모 <span id="pDetailCount" class="char-count">0/1000</span></label>
+            <textarea id="pDetail" rows="5" maxlength="1000" placeholder="회의 내용, 결정사항 등을 자세히 적어두세요"></textarea>
+          </div>
+          <div class="btn-row">
+            <button id="saveBtn" class="primary-btn">캘린더에 저장</button>
+            <button id="cancelBtn" class="ghost-btn">취소</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 캘린더 화면 -->
+      <section id="tab-calendar" class="tab-panel">
+        <div id="editCard" class="preview-card hidden">
+          <h3>일정 수정</h3>
+          <div class="field">
+            <label>날짜</label>
+            <input type="date" id="eDate" />
+          </div>
+          <div class="field">
+            <label>시간</label>
+            <input type="time" id="eTime" />
+          </div>
+          <div class="field">
+            <label>내용</label>
+            <input type="text" id="eTitle" />
+          </div>
+          <div class="field">
+            <label>상세 메모 <span id="eDetailCount" class="char-count">0/1000</span></label>
+            <textarea id="eDetail" rows="5" maxlength="1000" placeholder="회의 내용, 결정사항 등을 자세히 적어두세요"></textarea>
+          </div>
+          <div class="btn-row">
+            <button id="editSaveBtn" class="primary-btn">수정 저장</button>
+            <button id="editCancelBtn" class="ghost-btn">취소</button>
+          </div>
+        </div>
+
+        <div id="calendarList" class="calendar-list"></div>
+      </section>
+
+      <!-- 자료검색 화면 -->
+      <section id="tab-docs" class="tab-panel">
+        <h2 class="section-title">자료 업로드</h2>
+        <div class="field">
+          <label>파일 선택 (.xlsx, .pdf, .txt, .csv, 사진)</label>
+          <input type="file" id="docFileInput" accept=".xlsx,.pdf,.txt,.csv,.png,.jpg,.jpeg,application/pdf,text/plain,text/csv,image/*" />
+        </div>
+        <button id="docFileUploadBtn" class="primary-btn">업로드</button>
+        <p id="docUploadStatus" class="mic-status"></p>
+
+        <hr class="divider" />
+
+        <h2 class="section-title">검색</h2>
+        <div class="word-input-row">
+          <input type="text" id="docSearchInput" placeholder="예: SQ파이프 설치" />
+          <button id="docSearchClearBtn" class="ghost-btn">지우기</button>
+        </div>
+        <p id="docSearchStatus" class="mic-status"></p>
+
+        <div id="docList" class="calendar-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="alarmBanner" class="alarm-banner hidden">
+    <div class="alarm-banner-content">
+      <strong id="alarmBannerTitle"></strong>
+      <button id="alarmBannerClose">확인</button>
+    </div>
+  </div>
+
+  <script src="lib/pdf.min.js"></script>
+  <script src="parser.js"></script>
+  <script src="xlsx.js"></script>
+  <script src="pdf-extract.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
