@@ -51,20 +51,46 @@ function extractDate(text, now) {
   return { dateISO: toISODate(base), matched: null };
 }
 
-function extractTime(text) {
-  const timeMatch = text.match(/(오전|오후)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분)?/);
-  if (!timeMatch) return { time: null, matched: null };
+const KOREAN_HOURS = { 한: 1, 두: 2, 세: 3, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열한: 11, 열두: 12, 열: 10 };
+const KOREAN_MINUTES = { 십오: 15, 이십오: 25, 삼십오: 35, 사십오: 45, 오십오: 55, 이십: 20, 삼십: 30, 사십: 40, 오십: 50, 십: 10, 오: 5 };
 
-  let hour = parseInt(timeMatch[2], 10);
-  const minute = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
-  const ampm = timeMatch[1];
+function extractTime(text) {
+  // 숫자 시각: "10시 30분", "오후 2시"
+  let hour = null;
+  let minute = 0;
+  let matched = null;
+  let ampm = null;
+
+  const numMatch = text.match(/(오전|오후)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분|(반))?/);
+  if (numMatch) {
+    ampm = numMatch[1];
+    hour = parseInt(numMatch[2], 10);
+    minute = numMatch[3] ? parseInt(numMatch[3], 10) : numMatch[4] ? 30 : 0;
+    matched = numMatch[0];
+  } else {
+    // 한글 시각: "열시", "오후 열두시 반", "아홉시 삼십분" ("모두 시작" 같은 오탐 방지를 위해 앞이 한글이면 제외)
+    const korMatch = text.match(
+      /(오전|오후)?\s*(?<![가-힣])(열한|열두|다섯|여섯|일곱|여덟|아홉|한|두|세|네|열)\s*시\s*(?:(\d{1,2})\s*분|(십오|이십오|삼십오|사십오|오십오|이십|삼십|사십|오십|십|오)\s*분|(반))?/
+    );
+    if (!korMatch) return { time: null, matched: null };
+    ampm = korMatch[1];
+    hour = KOREAN_HOURS[korMatch[2]];
+    minute = korMatch[3]
+      ? parseInt(korMatch[3], 10)
+      : korMatch[4]
+        ? KOREAN_MINUTES[korMatch[4]]
+        : korMatch[5]
+          ? 30
+          : 0;
+    matched = korMatch[0];
+  }
 
   if (ampm === '오후' && hour < 12) hour += 12;
   if (ampm === '오전' && hour === 12) hour = 0;
 
   const hh = String(hour).padStart(2, '0');
   const mm = String(minute).padStart(2, '0');
-  return { time: `${hh}:${mm}`, matched: timeMatch[0] };
+  return { time: `${hh}:${mm}`, matched };
 }
 
 function extractTitle(text, removals) {

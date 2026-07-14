@@ -29,10 +29,11 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 const SILENCE_TIMEOUT_MS = 3000;
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function createMicController(btn, statusEl, targetEl, defaultStatusText) {
+function createMicController(btn, statusEl, targetEl, defaultStatusText, options = {}) {
+  const { append = false } = options;
   const controller = { recognition: null, listening: false };
   if (!SpeechRecognitionCtor) {
-    statusEl.textContent = '이 브라우저는 음성인식을 지원하지 않아요. 텍스트로 입력해주세요.';
+    statusEl.textContent = '이 브라우저는 음성인식을 지원하지 않아요. 텍스트로 직접 입력해주세요.';
     btn.disabled = true;
     return controller;
   }
@@ -42,6 +43,7 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText) {
   recognition.interimResults = true;
   recognition.continuous = true;
   let silenceTimer = null;
+  let baseText = '';
 
   const resetSilenceTimer = () => {
     clearTimeout(silenceTimer);
@@ -62,8 +64,12 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText) {
     for (let i = 0; i < event.results.length; i++) {
       text += event.results[i][0].transcript;
     }
-    targetEl.value = applyCustomWordCorrection(text, loadCustomWords());
-    // 검색창처럼 입력에 반응하는 화면이 바로 갱신되도록 input 이벤트를 쏴준다
+    const corrected = applyCustomWordCorrection(text, loadCustomWords());
+    let next = append && baseText ? `${baseText} ${corrected}` : corrected;
+    const maxLen = targetEl.maxLength > 0 ? targetEl.maxLength : Infinity;
+    if (next.length > maxLen) next = next.slice(0, maxLen);
+    targetEl.value = next;
+    // 검색창처럼 입력에 반응하는 화면(글자수 표시 등)이 바로 갱신되도록 input 이벤트를 쏴준다
     targetEl.dispatchEvent(new Event('input'));
     resetSilenceTimer();
   };
@@ -84,7 +90,8 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText) {
     if (controller.listening) {
       recognition.stop();
     } else {
-      targetEl.value = '';
+      baseText = append ? targetEl.value.trim() : '';
+      if (!append) targetEl.value = '';
       recognition.start();
     }
   });
@@ -113,6 +120,15 @@ function bindDetailCounter(textarea, counterEl) {
   });
 }
 bindDetailCounter(pDetail, pDetailCount);
+
+// 상세 메모 음성입력 (기존 내용 뒤에 이어붙임)
+createMicController(
+  document.getElementById('pDetailMicBtn'),
+  document.getElementById('pDetailMicStatus'),
+  pDetail,
+  '누르고 말하면 메모에 추가돼요',
+  { append: true }
+);
 
 analyzeBtn.addEventListener('click', () => {
   const text = transcriptEl.value.trim();
@@ -254,6 +270,15 @@ const eDetail = document.getElementById('eDetail');
 const eDetailCount = document.getElementById('eDetailCount');
 let editingId = null;
 bindDetailCounter(eDetail, eDetailCount);
+
+// 일정 수정 카드의 상세 메모 음성입력
+createMicController(
+  document.getElementById('eDetailMicBtn'),
+  document.getElementById('eDetailMicStatus'),
+  eDetail,
+  '누르고 말하면 메모에 추가돼요',
+  { append: true }
+);
 
 function openEditCard(id) {
   const alarm = alarms.find((a) => a.id === id);
@@ -448,6 +473,54 @@ async function getFileBlob(id) {
   });
 }
 
+// 업로드한 문서 내용에서 영문 전문용어를 뽑아 인식 보정 단어로 자동 등록한다.
+// (음성인식이 가장 자주 틀리는 게 영문 용어라서 영문/기호 조합만 추출, 자주 나온 순 최대 30개)
+const TERM_STOPWORDS = ['THE', 'AND', 'FOR', 'NOT', 'TON', 'OPEN', 'HIGH', 'LOW', 'RISK', 'PROCESS', 'POINT', 'CHECK'];
+
+function extractTechTerms(texts) {
+  const freq = new Map();
+  const termRegex = /[A-Za-z][A-Za-z0-9]*(?:[\-/.][A-Za-z0-9]+)*/g;
+  texts.forEach((t) => {
+    (t.match(termRegex) || []).forEach((w) => {
+      if (w.length < 3) return;
+      if (/^no\.?\d*$/i.test(w)) return;
+      if (TERM_STOPWORDS.includes(w.toUpperCase())) return;
+      const key = w.toUpperCase();
+      const entry = freq.get(key) || { count: 0, form: w };
+      entry.count++;
+      if (w === w.toUpperCase()) entry.form = w;
+      freq.set(key, entry);
+    });
+  });
+  return [...freq.values()].sort((a, b) => b.count - a.count).map((e) => e.form);
+}
+
+function autoRegisterWordsFromItems(newItems) {
+  const texts = [];
+  newItems.forEach((it) => {
+    texts.push(it.task || '');
+    (it.hazards || []).forEach((h) => texts.push(h));
+    (it.measures || []).forEach((m) => texts.push(m));
+    (it.lines || []).forEach((l) => texts.push(l));
+  });
+
+  const terms = extractTechTerms(texts);
+  const words = loadCustomWords();
+  let added = 0;
+  for (const term of terms) {
+    if (added >= 30) break;
+    if (!words.some((w) => w.toUpperCase() === term.toUpperCase())) {
+      words.push(term);
+      added++;
+    }
+  }
+  if (added > 0) {
+    saveCustomWords(words);
+    renderCustomWordList();
+  }
+  return added;
+}
+
 const TITLE_ONLY_SOURCE = '스캔/사진 파일 (제목으로 검색)';
 
 async function registerTitleOnlyFile(file, uploadStatus, note) {
@@ -458,6 +531,7 @@ async function registerTitleOnlyFile(file, uploadStatus, note) {
   docItems = docItems
     .filter((d) => !(d.titleOnly && d.task === title))
     .concat([{ id, source: TITLE_ONLY_SOURCE, task: title, titleOnly: true }]);
+  autoRegisterWordsFromItems([{ task: title }]);
   saveDocItems(docItems);
   renderDocList();
   uploadStatus.textContent = note;
@@ -522,7 +596,10 @@ document.getElementById('docFileUploadBtn').addEventListener('click', async () =
     saveDocItems(docItems);
     renderDocList();
 
-    uploadStatus.textContent = `"${sourceName}"에서 ${newItems.length}개 목차를 등록했어요.`;
+    const addedWords = autoRegisterWordsFromItems(newItems);
+    uploadStatus.textContent =
+      `"${sourceName}"에서 ${newItems.length}개 목차를 등록했어요.` +
+      (addedWords > 0 ? ` (인식 보정 단어 ${addedWords}개 자동 추가)` : '');
     fileInput.value = '';
   } catch (e) {
     uploadStatus.textContent = `파일 처리 중 오류: ${e.message}`;
