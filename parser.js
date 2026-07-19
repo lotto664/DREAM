@@ -236,11 +236,16 @@ function searchDocItems(query, items) {
       return;
     }
 
-    // PDF 페이지 항목: 줄 단위로만 검색한다
+    // PDF 페이지/사진(OCR) 항목: 파일 이름이 전부 일치하면 항목 전체, 아니면 줄 단위로 검색한다
     if (item.lines) {
+      const nameNorm = normalizeForSearch(`${item.source || ''} ${item.task}`);
+      if (tokens.every((t) => nameNorm.includes(t))) {
+        results.push({ item, hitTask: true, hitLines: item.lines, hitHazards: [], hitMeasures: [], partial: false });
+        return;
+      }
       const hitLines = item.lines.filter((l) => {
         const n = normalizeForSearch(l);
-        return tokens.every((t) => n.includes(t));
+        return tokens.every((t) => n.includes(t) || nameNorm.includes(t));
       });
       if (hitLines.length) {
         results.push({ item, hitTask: false, hitLines, hitHazards: [], hitMeasures: [], partial: true });

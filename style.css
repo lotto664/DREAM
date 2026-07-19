@@ -214,6 +214,44 @@ textarea, input[type="text"], input[type="date"], input[type="time"] {
   font-size: 12px;
   color: #64748b;
 }
+
+.scope-bar { margin: 8px 0 12px; }
+.scope-btn {
+  width: auto;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+.scope-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid #38bdf8;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: #38bdf8;
+}
+.scope-chip-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-chip button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .word-chip-list {
   display: flex;
   flex-wrap: wrap;

@@ -537,6 +537,45 @@ async function registerTitleOnlyFile(file, uploadStatus, note) {
   uploadStatus.textContent = note;
 }
 
+// 사진 파일: 글자를 인식(OCR)해서 내용으로 검색되게 등록한다.
+// 글자를 하나도 못 읽으면 예전처럼 제목으로만 검색되게 등록한다.
+async function registerImageWithOcr(file, uploadStatus) {
+  const title = file.name.replace(/\.[^.]+$/, '');
+  let lines = [];
+
+  try {
+    uploadStatus.textContent = '사진에서 글자를 인식하고 있어요... (처음엔 준비에 몇 초 걸려요)';
+    lines = await ocrImageToLines(file, (pct) => {
+      uploadStatus.textContent = `사진에서 글자를 인식하고 있어요... ${pct}%`;
+    });
+  } catch (err) {
+    lines = [];
+  } finally {
+    ocrShutdown();
+  }
+
+  if (lines.length === 0) {
+    await registerTitleOnlyFile(file, uploadStatus, `사진에서 글자를 찾지 못했어요. "${file.name}" 제목으로 검색되게 등록했어요.`);
+    return;
+  }
+
+  const id = `file_${Date.now()}`;
+  await saveFileBlob(id, file);
+  const newItem = { id, source: file.name, task: title, lines, fileId: id };
+
+  // 같은 파일을 다시 올리면 이전 등록(제목만 등록 포함)을 교체한다
+  docItems = docItems
+    .filter((d) => d.source !== file.name && !(d.titleOnly && d.task === title))
+    .concat([newItem]);
+  saveDocItems(docItems);
+  renderDocList();
+
+  const addedWords = autoRegisterWordsFromItems([newItem]);
+  uploadStatus.textContent =
+    `사진 "${file.name}"에서 ${lines.length}줄을 인식해 검색되게 등록했어요.` +
+    (addedWords > 0 ? ` (인식 보정 단어 ${addedWords}개 자동 추가)` : '');
+}
+
 document.getElementById('docFileUploadBtn').addEventListener('click', async () => {
   const fileInput = document.getElementById('docFileInput');
   const uploadStatus = document.getElementById('docUploadStatus');
@@ -552,8 +591,8 @@ document.getElementById('docFileUploadBtn').addEventListener('click', async () =
     let isPdf = false;
 
     if (/\.(png|jpe?g|gif|bmp|webp)$/i.test(file.name)) {
-      // 사진/그림 파일: 제목으로 검색되게 등록
-      await registerTitleOnlyFile(file, uploadStatus, `사진 "${file.name}"을 제목으로 검색되게 등록했어요.`);
+      // 사진/그림 파일: 글자를 인식(OCR)해서 내용으로도 검색되게 등록
+      await registerImageWithOcr(file, uploadStatus);
       fileInput.value = '';
       return;
     }
@@ -574,13 +613,33 @@ document.getElementById('docFileUploadBtn').addEventListener('click', async () =
 
     if (extracted.length === 0) {
       if (isPdf) {
-        // 스캔형 PDF: 글자를 못 읽으므로 제목으로 검색되게 등록
-        await registerTitleOnlyFile(file, uploadStatus, `스캔 PDF라 내용은 읽지 못했어요. "${file.name}" 제목으로 검색되게 등록했어요.`);
-        fileInput.value = '';
+        // 스캔형 PDF: 페이지를 그림으로 그려서 글자를 인식(OCR)한다
+        uploadStatus.textContent = '스캔 PDF네요. 사진에서 글자를 인식해볼게요... (처음엔 준비에 몇 초 걸려요)';
+        let ocrPages = [];
+        try {
+          ocrPages = await ocrPdfToPages(file, (msg) => {
+            uploadStatus.textContent = msg;
+          });
+        } catch (err) {
+          ocrPages = [];
+        } finally {
+          ocrShutdown();
+        }
+
+        if (ocrPages.length === 0) {
+          await registerTitleOnlyFile(file, uploadStatus, `스캔 PDF에서 글자를 읽지 못했어요. "${file.name}" 제목으로 검색되게 등록했어요.`);
+          fileInput.value = '';
+          return;
+        }
+
+        // 원본 PDF도 보관해서 "원본 열기"로 볼 수 있게 한다
+        const fid = `file_${Date.now()}`;
+        await saveFileBlob(fid, file);
+        extracted = ocrPages.map((pg) => ({ task: `${pg.page}페이지 (사진에서 인식)`, lines: pg.lines, fileId: fid }));
       } else {
         uploadStatus.textContent = '문서에서 항목을 찾지 못했어요. 형식을 확인해주세요.';
+        return;
       }
-      return;
     }
 
     const sourceName = file.name;
@@ -589,6 +648,7 @@ document.getElementById('docFileUploadBtn').addEventListener('click', async () =
       source: sourceName,
       task: it.task,
       ...(it.lines ? { lines: it.lines } : { hazards: it.hazards || [], measures: it.measures || [] }),
+      ...(it.fileId ? { fileId: it.fileId } : {}),
     }));
 
     // 같은 파일을 다시 올리면 이전 내용을 교체한다
@@ -643,6 +703,7 @@ function docItemHtml(item, options = {}) {
         <div class="doc-body">
           <ul class="result-list">${linesHtml}</ul>
           ${partial ? '<p class="doc-note">검색어와 일치한 줄만 표시했어요.</p>' : ''}
+          ${item.fileId ? `<button class="open-file-btn ghost-btn" data-fileid="${item.fileId}">원본 열기</button>` : ''}
         </div>
       </details>`;
   }
@@ -673,6 +734,40 @@ function docItemHtml(item, options = {}) {
     </details>`;
 }
 
+// 결과 내 검색: 검색 결과에 나온 파일들로 범위를 좁혀서 다시 검색할 수 있다
+let docSearchScope = null;
+
+function updateScopeBar(resultSources) {
+  const bar = document.getElementById('docScopeBar');
+
+  if (docSearchScope) {
+    const names = docSearchScope.join(', ');
+    bar.innerHTML = `
+      <span class="scope-chip">
+        <span class="scope-chip-text">📌 결과 내 검색 중 (${escapeHtml(names)})</span>
+        <button id="scopeClearBtn" type="button">✕ 해제</button>
+      </span>`;
+    bar.querySelector('#scopeClearBtn').addEventListener('click', () => {
+      docSearchScope = null;
+      renderDocList();
+    });
+    return;
+  }
+
+  if (resultSources && resultSources.length > 0) {
+    bar.innerHTML = `<button id="scopeSetBtn" type="button" class="ghost-btn scope-btn">📌 이 결과 내에서 다시 검색</button>`;
+    bar.querySelector('#scopeSetBtn').addEventListener('click', () => {
+      docSearchScope = resultSources;
+      docSearchInput.value = '';
+      renderDocList();
+      docSearchInput.focus();
+    });
+    return;
+  }
+
+  bar.innerHTML = '';
+}
+
 function renderDocList() {
   const listEl = document.getElementById('docList');
   docItems = loadDocItems();
@@ -681,14 +776,23 @@ function renderDocList() {
 
   if (docItems.length === 0) {
     docSearchStatus.textContent = '';
+    updateScopeBar(null);
     listEl.innerHTML = '<p class="empty-state">업로드된 자료가 없어요. 위에서 파일을 올려보세요.</p>';
     return;
   }
 
+  // 결과 내 검색이 켜져 있으면 해당 파일들만 대상으로 한다
+  const baseItems = docSearchScope
+    ? docItems.filter((d) => docSearchScope.includes(d.source))
+    : docItems;
+
   if (!query) {
-    docSearchStatus.textContent = `전체 ${docItems.length}개 목차 (누르면 펼쳐집니다)`;
+    docSearchStatus.textContent = docSearchScope
+      ? `결과 내 검색: ${baseItems.length}개 목차에서 검색어를 입력하세요`
+      : `전체 ${docItems.length}개 목차 (누르면 펼쳐집니다)`;
+    updateScopeBar(null);
     const bySource = {};
-    docItems.forEach((d) => {
+    baseItems.forEach((d) => {
       if (!bySource[d.source]) bySource[d.source] = [];
       bySource[d.source].push(d);
     });
@@ -701,9 +805,12 @@ function renderDocList() {
     return;
   }
 
-  const results = searchDocItems(query, docItems);
+  const results = searchDocItems(query, baseItems);
   if (results.length === 0) {
-    docSearchStatus.textContent = `"${query}" 검색 결과가 없어요.`;
+    docSearchStatus.textContent = docSearchScope
+      ? `결과 내에서 "${query}" 검색 결과가 없어요.`
+      : `"${query}" 검색 결과가 없어요.`;
+    updateScopeBar(null);
     listEl.innerHTML = '';
     return;
   }
@@ -715,7 +822,9 @@ function renderDocList() {
     bySource[r.item.source].push(r);
   });
 
-  docSearchStatus.textContent = `"${query}" 검색 결과 ${results.length}건 · 파일 ${Object.keys(bySource).length}개 (눌러서 펼쳐보세요)`;
+  const scopeLabel = docSearchScope ? '결과 내 ' : '';
+  docSearchStatus.textContent = `${scopeLabel}"${query}" 검색 결과 ${results.length}건 · 파일 ${Object.keys(bySource).length}개 (눌러서 펼쳐보세요)`;
+  updateScopeBar(Object.keys(bySource));
   listEl.innerHTML = Object.keys(bySource)
     .map((source) => {
       const inner = bySource[source]

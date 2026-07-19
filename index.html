@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#111827" />
 <title>현장 메모 · 음성 알람</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" href="icon-192.png" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -124,6 +128,7 @@
         </div>
         <p id="docMicStatus" class="mic-status"></p>
         <p id="docSearchStatus" class="mic-status"></p>
+        <div id="docScopeBar" class="scope-bar"></div>
 
         <div id="docList" class="calendar-list"></div>
       </section>
@@ -138,9 +143,17 @@
   </div>
 
   <script src="lib/pdf.min.js"></script>
+  <script src="lib/tesseract/tesseract.min.js"></script>
   <script src="parser.js"></script>
   <script src="xlsx.js"></script>
   <script src="pdf-extract.js"></script>
+  <script src="ocr.js"></script>
   <script src="app.js"></script>
+  <script>
+    // 앱 설치/오프라인 지원 (PWA)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>
