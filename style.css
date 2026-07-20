@@ -158,12 +158,20 @@ textarea, input[type="text"], input[type="date"], input[type="time"] {
 .event-time { font-weight: 700; color: #38bdf8; font-size: 14px; min-width: 48px; }
 .event-title { flex: 1; font-size: 14px; }
 .edit-btn,
-.delete-btn {
+.delete-btn,
+.gcal-item-btn {
   background: none;
   border: none;
   color: #64748b;
   font-size: 16px;
   padding: 4px 6px;
+}
+
+.gcal-btn {
+  width: 100%;
+  margin-top: 10px;
+  color: #38bdf8;
+  border-color: #38bdf8;
 }
 .empty-state { color: #64748b; text-align: center; margin-top: 40px; }
 

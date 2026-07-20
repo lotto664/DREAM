@@ -159,10 +159,27 @@ document.getElementById('cancelBtn').addEventListener('click', () => {
   previewCard.classList.add('hidden');
 });
 
-document.getElementById('saveBtn').addEventListener('click', () => {
+// 구글 캘린더 "일정 만들기" 화면을 제목/시간/메모가 채워진 상태로 여는 주소
+function googleCalendarUrl(alarm) {
+  const start = `${alarm.dateISO.replace(/-/g, '')}T${alarm.time.replace(':', '')}00`;
+  const endDate = new Date(`${alarm.dateISO}T${alarm.time}:00`);
+  endDate.setHours(endDate.getHours() + 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  const end = `${endDate.getFullYear()}${pad(endDate.getMonth() + 1)}${pad(endDate.getDate())}T${pad(endDate.getHours())}${pad(endDate.getMinutes())}00`;
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: alarm.title,
+    dates: `${start}/${end}`,
+    details: alarm.detail || '',
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function saveAlarmFromPreview() {
   if (!pDate.value || !pTime.value) {
     alert('날짜와 시간을 확인해주세요.');
-    return;
+    return null;
   }
   const newAlarm = {
     id: `${Date.now()}`,
@@ -181,6 +198,16 @@ document.getElementById('saveBtn').addEventListener('click', () => {
   transcriptEl.value = '';
 
   document.querySelector('.tab-btn[data-tab="calendar"]').click();
+  return newAlarm;
+}
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  saveAlarmFromPreview();
+});
+
+document.getElementById('saveGcalBtn').addEventListener('click', () => {
+  const alarm = saveAlarmFromPreview();
+  if (alarm) window.open(googleCalendarUrl(alarm), '_blank');
 });
 
 // ---------- 캘린더 렌더링 ----------
@@ -234,6 +261,7 @@ function renderCalendar() {
             <div class="event-item ${isPast ? 'past' : ''}" data-id="${a.id}">
               <span class="event-time">${a.time}</span>
               <span class="event-title">${a.title}</span>
+              <button class="gcal-item-btn" data-id="${a.id}" title="구글 캘린더에 등록">📅</button>
               <button class="edit-btn" data-id="${a.id}">✏️</button>
               <button class="delete-btn" data-id="${a.id}">✕</button>
             </div>
@@ -257,6 +285,13 @@ function renderCalendar() {
     btn.addEventListener('click', (e) => {
       const id = e.target.dataset.id;
       openEditCard(id);
+    });
+  });
+
+  listEl.querySelectorAll('.gcal-item-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const alarm = alarms.find((a) => a.id === e.target.dataset.id);
+      if (alarm) window.open(googleCalendarUrl(alarm), '_blank');
     });
   });
 }
