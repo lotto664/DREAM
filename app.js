@@ -48,20 +48,32 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText, options
   let baseText = '';
   let finalTranscript = '';
 
-  const resetSilenceTimer = () => {
+  // 말이 멈춘 뒤 3초 카운트다운 시작
+  const armSilenceTimer = () => {
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
       if (controller.listening) recognition.stop();
     }, SILENCE_TIMEOUT_MS);
+  };
+  // 말하는 중에는 카운트다운을 멈춰서 도중에 종료되지 않게 한다
+  const disarmSilenceTimer = () => {
+    clearTimeout(silenceTimer);
   };
 
   recognition.onstart = () => {
     controller.listening = true;
     finalTranscript = '';
     btn.classList.add('listening');
-    statusEl.textContent = '듣고 있어요... (말이 없으면 3초 후 종료)';
-    resetSilenceTimer();
+    statusEl.textContent = '듣고 있어요... (말이 멈추면 3초 후 종료)';
+    armSilenceTimer(); // 처음부터 아무 말 없으면 종료되도록
   };
+
+  // 소리/말이 시작되면 종료 카운트다운 중단
+  recognition.onsoundstart = disarmSilenceTimer;
+  recognition.onspeechstart = disarmSilenceTimer;
+  // 소리/말이 끝나면 3초 카운트다운 시작
+  recognition.onspeechend = armSilenceTimer;
+  recognition.onsoundend = armSilenceTimer;
 
   recognition.onresult = (event) => {
     // 새로 확정된 결과만 이어붙인다 (resultIndex 이전은 이미 처리됨)
@@ -78,7 +90,7 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText, options
     targetEl.value = next;
     // 검색창처럼 입력에 반응하는 화면(글자수 표시 등)이 바로 갱신되도록 input 이벤트를 쏴준다
     targetEl.dispatchEvent(new Event('input'));
-    resetSilenceTimer();
+    armSilenceTimer();
   };
 
   recognition.onerror = (event) => {
