@@ -40,10 +40,13 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText, options
 
   const recognition = new SpeechRecognitionCtor();
   recognition.lang = 'ko-KR';
-  recognition.interimResults = true;
+  // 중간 인식결과(interim)를 켜면 일부 모바일 브라우저(카톡/삼성 인터넷)가
+  // 같은 단어를 여러 번 확정 결과로 내보내 "내일내일내일"처럼 중복 입력되므로 끈다.
+  recognition.interimResults = false;
   recognition.continuous = true;
   let silenceTimer = null;
   let baseText = '';
+  let finalTranscript = '';
 
   const resetSilenceTimer = () => {
     clearTimeout(silenceTimer);
@@ -54,17 +57,21 @@ function createMicController(btn, statusEl, targetEl, defaultStatusText, options
 
   recognition.onstart = () => {
     controller.listening = true;
+    finalTranscript = '';
     btn.classList.add('listening');
     statusEl.textContent = '듣고 있어요... (말이 없으면 3초 후 종료)';
     resetSilenceTimer();
   };
 
   recognition.onresult = (event) => {
-    let text = '';
-    for (let i = 0; i < event.results.length; i++) {
-      text += event.results[i][0].transcript;
+    // 새로 확정된 결과만 이어붙인다 (resultIndex 이전은 이미 처리됨)
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const res = event.results[i];
+      if (res.isFinal) finalTranscript += res[0].transcript + ' ';
     }
-    const corrected = applyCustomWordCorrection(text, loadCustomWords());
+    // 안전장치: 같은 단어가 연속으로 중복 인식되면 하나로 합친다 (내일 내일 내일 → 내일)
+    const deduped = dedupeConsecutiveWords(finalTranscript.trim());
+    const corrected = applyCustomWordCorrection(deduped, loadCustomWords());
     let next = append && baseText ? `${baseText} ${corrected}` : corrected;
     const maxLen = targetEl.maxLength > 0 ? targetEl.maxLength : Infinity;
     if (next.length > maxLen) next = next.slice(0, maxLen);
@@ -234,44 +241,70 @@ function formatDateHeader(dateISO) {
   return { label, isPast: diffDays < 0 };
 }
 
-function renderCalendar() {
-  const listEl = document.getElementById('calendarList');
-  alarms = loadAlarms();
+// 달력이 지금 보고 있는 월과, 눌러서 선택한 날짜
+const calView = { year: new Date().getFullYear(), month: new Date().getMonth() };
+let calSelectedDate = null;
 
-  if (alarms.length === 0) {
-    listEl.innerHTML = '<p class="empty-state">등록된 일정이 없어요. 음성입력 탭에서 추가해보세요.</p>';
-    return;
-  }
+function renderMonthCalendar() {
+  const grid = document.getElementById('calGrid');
+  const label = document.getElementById('calMonthLabel');
+  label.textContent = `${calView.year}년 ${calView.month + 1}월`;
 
-  const groups = {};
+  const todayISO = toISODateLocal(new Date());
+  const dateCount = {};
   alarms.forEach((a) => {
-    if (!groups[a.dateISO]) groups[a.dateISO] = [];
-    groups[a.dateISO].push(a);
+    dateCount[a.dateISO] = (dateCount[a.dateISO] || 0) + 1;
   });
 
-  const sortedDates = Object.keys(groups).sort();
+  const first = new Date(calView.year, calView.month, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(calView.year, calView.month + 1, 0).getDate();
 
-  listEl.innerHTML = sortedDates
-    .map((dateISO) => {
-      const { label, isPast } = formatDateHeader(dateISO);
-      const items = groups[dateISO]
-        .sort((a, b) => a.time.localeCompare(b.time))
-        .map(
-          (a) => `
-            <div class="event-item ${isPast ? 'past' : ''}" data-id="${a.id}">
-              <span class="event-time">${a.time}</span>
-              <span class="event-title">${a.title}</span>
-              <button class="gcal-item-btn" data-id="${a.id}" title="구글 캘린더에 등록">📅</button>
-              <button class="edit-btn" data-id="${a.id}">✏️</button>
-              <button class="delete-btn" data-id="${a.id}">✕</button>
-            </div>
-            ${a.detail ? `<div class="detail-preview">${escapeHtml(a.detail)}</div>` : ''}`
-        )
-        .join('');
-      return `<div class="date-group"><h3 class="date-header ${isPast ? 'past' : ''}">${label}</h3>${items}</div>`;
-    })
-    .join('');
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push('<span class="cal-cell empty"></span>');
 
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${calView.year}-${String(calView.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dow = new Date(calView.year, calView.month, d).getDay();
+    const classes = ['cal-cell'];
+    if (iso === todayISO) classes.push('today');
+    if (iso === calSelectedDate) classes.push('selected');
+    if (iso < todayISO) classes.push('past');
+    if (dow === 0) classes.push('cal-sun');
+    if (dow === 6) classes.push('cal-sat');
+    const hasEvent = dateCount[iso] > 0;
+    cells.push(
+      `<button type="button" class="${classes.join(' ')}" data-date="${iso}">
+        <span class="cal-day">${d}</span>
+        ${hasEvent ? `<span class="cal-dot"></span>` : ''}
+      </button>`
+    );
+  }
+
+  grid.innerHTML = cells.join('');
+
+  grid.querySelectorAll('.cal-cell[data-date]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const date = btn.dataset.date;
+      calSelectedDate = calSelectedDate === date ? null : date;
+      renderCalendar();
+    });
+  });
+}
+
+function eventItemHtml(a, isPast) {
+  return `
+    <div class="event-item ${isPast ? 'past' : ''}" data-id="${a.id}">
+      <span class="event-time">${a.time}</span>
+      <span class="event-title">${escapeHtml(a.title)}</span>
+      <button class="gcal-item-btn" data-id="${a.id}" title="구글 캘린더에 등록">📅</button>
+      <button class="edit-btn" data-id="${a.id}">✏️</button>
+      <button class="delete-btn" data-id="${a.id}">✕</button>
+    </div>
+    ${a.detail ? `<div class="detail-preview">${escapeHtml(a.detail)}</div>` : ''}`;
+}
+
+function bindEventItemButtons(listEl) {
   listEl.querySelectorAll('.delete-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const id = e.target.dataset.id;
@@ -280,14 +313,9 @@ function renderCalendar() {
       renderCalendar();
     });
   });
-
   listEl.querySelectorAll('.edit-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const id = e.target.dataset.id;
-      openEditCard(id);
-    });
+    btn.addEventListener('click', (e) => openEditCard(e.target.dataset.id));
   });
-
   listEl.querySelectorAll('.gcal-item-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const alarm = alarms.find((a) => a.id === e.target.dataset.id);
@@ -295,6 +323,81 @@ function renderCalendar() {
     });
   });
 }
+
+function renderCalendar() {
+  alarms = loadAlarms();
+  renderMonthCalendar();
+
+  const listEl = document.getElementById('calendarList');
+  const todayISO = toISODateLocal(new Date());
+
+  // 날짜를 눌렀으면 그 날 일정만, 아니면 오늘 이후(미래) 일정 목록
+  if (calSelectedDate) {
+    const { label, isPast } = formatDateHeader(calSelectedDate);
+    const dayEvents = alarms
+      .filter((a) => a.dateISO === calSelectedDate)
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    const items = dayEvents.length
+      ? dayEvents.map((a) => eventItemHtml(a, isPast)).join('')
+      : '<p class="empty-state">이 날은 일정이 없어요.</p>';
+
+    listEl.innerHTML =
+      `<div class="date-group">
+        <h3 class="date-header ${isPast ? 'past' : ''}">${label}
+          <button id="calShowAllBtn" type="button" class="cal-showall">전체 보기</button>
+        </h3>${items}</div>`;
+
+    document.getElementById('calShowAllBtn').addEventListener('click', () => {
+      calSelectedDate = null;
+      renderCalendar();
+    });
+    bindEventItemButtons(listEl);
+    return;
+  }
+
+  const upcoming = alarms
+    .filter((a) => a.dateISO >= todayISO)
+    .sort((a, b) => `${a.dateISO}${a.time}`.localeCompare(`${b.dateISO}${b.time}`));
+
+  if (upcoming.length === 0) {
+    const pastNote = alarms.length
+      ? '<p class="empty-state">다가오는 일정이 없어요. 지난 일정은 달력에서 날짜를 눌러 보세요.</p>'
+      : '<p class="empty-state">등록된 일정이 없어요. 음성입력 탭에서 추가해보세요.</p>';
+    listEl.innerHTML = pastNote;
+    return;
+  }
+
+  const groups = {};
+  upcoming.forEach((a) => {
+    if (!groups[a.dateISO]) groups[a.dateISO] = [];
+    groups[a.dateISO].push(a);
+  });
+
+  listEl.innerHTML =
+    '<h3 class="list-section-title">다가오는 일정</h3>' +
+    Object.keys(groups)
+      .sort()
+      .map((dateISO) => {
+        const { label } = formatDateHeader(dateISO);
+        const items = groups[dateISO].map((a) => eventItemHtml(a, false)).join('');
+        return `<div class="date-group"><h3 class="date-header">${label}</h3>${items}</div>`;
+      })
+      .join('');
+
+  bindEventItemButtons(listEl);
+}
+
+document.getElementById('calPrevBtn').addEventListener('click', () => {
+  calView.month--;
+  if (calView.month < 0) { calView.month = 11; calView.year--; }
+  renderCalendar();
+});
+document.getElementById('calNextBtn').addEventListener('click', () => {
+  calView.month++;
+  if (calView.month > 11) { calView.month = 0; calView.year++; }
+  renderCalendar();
+});
 
 // ---------- 일정 수정 ----------
 const editCard = document.getElementById('editCard');

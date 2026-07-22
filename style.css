@@ -134,6 +134,95 @@ textarea, input[type="text"], input[type="date"], input[type="time"] {
 .preview-card h3 { margin-top: 0; font-size: 15px; color: #38bdf8; }
 .hidden { display: none !important; }
 
+/* ===== 월간 달력 ===== */
+.month-cal {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 18px;
+}
+.month-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cal-month-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.cal-nav-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 20px;
+  cursor: pointer;
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.cal-weekdays .cal-sun { color: #f87171; }
+.cal-weekdays .cal-sat { color: #60a5fa; }
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+}
+.cal-cell.empty { cursor: default; }
+.cal-cell.past .cal-day { color: #64748b; }
+.cal-cell.cal-sun .cal-day { color: #f87171; }
+.cal-cell.cal-sat .cal-day { color: #60a5fa; }
+.cal-cell.today { background: #0f172a; }
+.cal-cell.today .cal-day { color: #38bdf8; font-weight: 700; }
+.cal-cell.selected { background: #38bdf8; }
+.cal-cell.selected .cal-day { color: #0f172a; font-weight: 700; }
+.cal-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+.cal-cell.selected .cal-dot { background: #0f172a; }
+.cal-cell.past .cal-dot { background: #64748b; }
+.cal-showall {
+  float: right;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.list-section-title {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 4px 0 10px;
+}
+
 .calendar-list { padding-bottom: 20px; }
 .date-group { margin-bottom: 18px; }
 .date-header {

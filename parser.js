@@ -287,6 +287,32 @@ function levenshteinDistance(a, b) {
   return dp[a.length][b.length];
 }
 
+// 한 단어 안에서 같은 조각이 3번 이상 반복되면 하나로 줄인다 ("내일내일내일내일" → "내일").
+// 일부 모바일 음성엔진이 같은 말을 중복해서 내보내는 버그를 보정하기 위한 안전장치.
+function collapseRepeatedUnit(token) {
+  const n = token.length;
+  for (let unit = 1; unit <= Math.floor(n / 3); unit++) {
+    if (n % unit !== 0) continue;
+    const piece = token.slice(0, unit);
+    let allSame = true;
+    for (let i = unit; i < n; i += unit) {
+      if (token.slice(i, i + unit) !== piece) { allSame = false; break; }
+    }
+    if (allSame && n / unit >= 3) return piece;
+  }
+  return token;
+}
+
+// 띄어쓰기로 나눈 뒤 연속으로 똑같은 단어가 반복되면 하나만 남긴다 ("내일 내일 내일" → "내일").
+function dedupeConsecutiveWords(text) {
+  const tokens = text.split(/\s+/).filter(Boolean).map(collapseRepeatedUnit);
+  const out = [];
+  for (const t of tokens) {
+    if (out.length === 0 || out[out.length - 1] !== t) out.push(t);
+  }
+  return out.join(' ');
+}
+
 // 등록된 단어와 발음이 비슷한 구간을 찾아 정확한 표기로 치환한다 (사전 등록 단어가 많지 않은 것을 전제로 한 O(n^2) 슬라이딩 매칭).
 function applyCustomWordCorrection(text, words) {
   if (!text || !words || words.length === 0) return text;
